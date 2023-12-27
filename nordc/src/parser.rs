@@ -127,8 +127,8 @@ where
     F: Parser<&'a str, O1, ContextError>,
 {
     delimited(
-        '(',
+        '{',
         preceded(multispace0, inner),
-        cut_err(preceded(multispace0, ')')).context(StrContext::Label("closing paren")),
+        cut_err(preceded(multispace0, '}')).context(StrContext::Label("closing brace")),
     )
 }
