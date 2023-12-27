@@ -1,0 +1,74 @@
+grammar;
+
+// ===== LEXER =====
+use super::lexer::Token;
+use super::lalrpop_lexer::LexicalError;
+
+extern {
+  type Location = usize;
+  type Error = LexicalError;
+
+  enum Token {
+    "let" => Token::KeywordLet,
+    "fn" => Token::KeywordFn,
+    "if" => Token::KeywordIf,
+    "then" => Token::KeywordThen,
+    "else" => Token::KeywordElse,
+    "identifier" => Token::Identifier(<String>),
+    "int" => Token::Integer(<i64>),
+    "bool" => Token::Boolean(<bool>),
+    "::" => Token::DoubleColon,
+    "," => Token::Comma,
+    "(" => Token::LParen,
+    ")" => Token::RParen,
+    "=" => Token::Assign,
+    ";" => Token::Semicolon,
+    "+" => Token::OperatorAdd,
+    "-" => Token::OperatorSub,
+    "*" => Token::OperatorMul,
+    "/" => Token::OperatorDiv,
+  }
+}
+
+// ===== PARSER =====
+use super::ast::{Expr, Atom};
+
+// Define the main expressions with proper handling of optional elements and clear precedence
+pub Expr: Expr = {
+    <cond:IfExpr> => cond,
+    <app:ApplicationExpr> => app,
+    <atom:Atom> => Expr::Constant(atom)
+};
+
+// Define 'if' expressions with a clear structure to avoid ambiguity
+IfExpr: Expr = {
+    "if" <cond:Expr> "then" <then_part:Expr> "else" <else_part:Expr> => {
+        Expr::IfElse(Box::new(cond), Box::new(then_part), Box::new(else_part))
+    }
+};
+
+// Define function application with proper precedence
+ApplicationExpr: Expr = {
+    <func:Ident> "::" "(" <args:Comma<Expr>> ")" => Expr::Application(func, args)
+};
+
+// Define identifiers with a clear regex pattern
+Ident: String = <name:"identifier"> => name.to_string();
+
+// Define atoms ensuring that the patterns are distinct and non-overlapping
+Atom: Atom = {
+    <num:"int"> => Atom::Num(num),
+    <boolean:"bool"> => Atom::Boolean(boolean),
+    <builtin:Ident> => Atom::Builtin(builtin)
+};
+
+// Define a clearer comma-separated list handling
+Comma<T>: Vec<T> = {
+    <head:T> <tail:("," <T>)*> => {
+        let mut elems = vec![head];
+        for elem in tail {
+            elems.push(elem);
+        }
+        elems
+    }
+};
