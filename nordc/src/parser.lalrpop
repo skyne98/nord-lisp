@@ -21,35 +21,98 @@ extern {
     "," => Token::Comma,
     "(" => Token::LParen,
     ")" => Token::RParen,
+    "{" => Token::LBrace,
+    "}" => Token::RBrace,
+    "[" => Token::LBracket,
+    "]" => Token::RBracket,
     "=" => Token::Assign,
     ";" => Token::Semicolon,
     "+" => Token::OperatorAdd,
     "-" => Token::OperatorSub,
     "*" => Token::OperatorMul,
     "/" => Token::OperatorDiv,
+    "||" => Token::OperatorOr,
+    "&&" => Token::OperatorAnd,
+    "==" => Token::OperatorEqual,
+    "!=" => Token::OperatorNotEqual,
   }
 }
 
 // ===== PARSER =====
-use super::ast::{Expr, Atom};
+use super::ast::{Expr, Atom, Opcode};
 
 // Define the main expressions with proper handling of optional elements and clear precedence
 pub Expr: Expr = {
     <cond:IfExpr> => cond,
-    <app:ApplicationExpr> => app,
-    <atom:Atom> => Expr::Constant(atom)
+    <block:Block> => Expr::Block(block),
+    <or:OrExpr> => or
 };
 
-// Define 'if' expressions with a clear structure to avoid ambiguity
+// If expression with and without else part
 IfExpr: Expr = {
     "if" <cond:Expr> "then" <then_part:Expr> "else" <else_part:Expr> => {
-        Expr::IfElse(Box::new(cond), Box::new(then_part), Box::new(else_part))
+        Expr::IfElse(Box::new(cond), Box::new(then_part), Some(Box::new(else_part)))
     }
 };
 
-// Define function application with proper precedence
-ApplicationExpr: Expr = {
-    <func:Ident> "::" "(" <args:Comma<Expr>> ")" => Expr::Application(func, args)
+// Define a clearer list of expressions handling
+Exprs: Vec<Expr> = {
+    <head:Expr> <tail:(";" <Expr>)*> => {
+        let mut exprs = vec![head];
+        for expr in tail {
+            exprs.push(expr);
+        }
+        exprs
+    }
+};
+
+// Block of expressions (might be empty)
+Block: Vec<Expr> = {
+    "{" <exprs:Exprs?> "}" => exprs.unwrap_or(vec![])
+};
+
+// ==== Precedence climbing ====
+// Binary
+BinaryTier<Op, NextTier>: Expr = {
+    <left:BinaryTier<Op, NextTier>> <op:Op> <right:NextTier> => Expr::BinaryOp(Box::new(left), op, Box::new(right)),
+    NextTier
+};
+OrOp: Opcode = {
+    "||" => Opcode::Or
+};
+OrExpr: Expr = BinaryTier<OrOp, AndExpr>;
+AndOp: Opcode = {
+    "&&" => Opcode::And
+};
+AndExpr: Expr = BinaryTier<AndOp, EqualityExpr>;
+EqualityOp: Opcode = {
+    "==" => Opcode::Equal,
+    "!=" => Opcode::NotEqual
+};
+EqualityExpr: Expr = BinaryTier<EqualityOp, AddSubExpr>;
+AddSubOp: Opcode = {
+    "+" => Opcode::Add,
+    "-" => Opcode::Sub
+};
+AddSubExpr: Expr = BinaryTier<AddSubOp, MulDivExpr>;
+MulDivOp: Opcode = {
+    "*" => Opcode::Mul,
+    "/" => Opcode::Div
+};
+MulDivExpr: Expr = BinaryTier<MulDivOp, UnaryExpr>;
+
+// Unary
+UnaryExpr: Expr = {
+    "-" <expr:UnaryExpr> => Expr::UnaryOp(Opcode::Neg, Box::new(expr)),
+    <function:FunctionCallExpr> => function
+};
+FunctionCallExpr: Expr = {
+    <callee:FunctionCallExpr> "(" <arg:Expr> ")" => Expr::FunctionCall(Box::new(callee), Box::new(arg)),
+    <constant:ConstantExpr> => constant,
+};
+ConstantExpr: Expr = {
+    <atom:Atom> => Expr::Constant(atom),
+    "(" <expr:Expr> ")" => expr
 };
 
 // Define identifiers with a clear regex pattern
@@ -59,7 +122,7 @@ Ident: String = <name:"identifier"> => name.to_string();
 Atom: Atom = {
     <num:"int"> => Atom::Num(num),
     <boolean:"bool"> => Atom::Boolean(boolean),
-    <builtin:Ident> => Atom::Builtin(builtin)
+    <identifier:Ident> => Atom::Identifier(identifier)
 };
 
 // Define a clearer comma-separated list handling

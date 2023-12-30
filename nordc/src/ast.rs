@@ -1,16 +1,36 @@
+#[derive(Debug, Clone, Copy)]
+pub enum Opcode {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    Neg,
+    And,
+    Or,
+}
+
 #[derive(Debug)]
 pub enum Expr {
-    Application(String, Vec<Expr>),
-    IfElse(Box<Expr>, Box<Expr>, Box<Expr>),
-    If(Box<Expr>, Box<Expr>),
+    IfElse(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     Constant(Atom),
-    Quote(Box<Expr>),
+    Block(Vec<Expr>),
+    FunctionCall(Box<Expr>, Box<Expr>),
+
+    // Unary
+    UnaryOp(Opcode, Box<Expr>),
+    // Binary
+    BinaryOp(Box<Expr>, Opcode, Box<Expr>),
 }
 
 #[derive(Debug)]
 pub enum Atom {
     Num(i64),
     Boolean(bool),
-    Builtin(String),
-    Keyword(String),
+    Identifier(String),
 }

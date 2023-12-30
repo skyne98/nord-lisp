@@ -56,6 +56,16 @@ pub enum Token {
     OperatorMul,
     #[token("/")]
     OperatorDiv,
+
+    #[token("==")]
+    OperatorEqual,
+    #[token("!=")]
+    OperatorNotEqual,
+
+    #[token("&&")]
+    OperatorAnd,
+    #[token("||")]
+    OperatorOr,
 }
 
 impl fmt::Display for Token {
