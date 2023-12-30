@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod interpreter;
 mod lalrpop_lexer;
 pub mod lexer;
 
@@ -9,6 +10,8 @@ use logos::Logos;
 lalrpop_mod!(pub parser); // synthesized by LALRPOP
 
 fn main() -> Result<()> {
+    let mut interpreter = interpreter::Interpreter::new();
+
     // Simple eval loop
     loop {
         // Read
@@ -29,5 +32,9 @@ fn main() -> Result<()> {
         let output = parser.parse(lexer);
 
         println!("===== AST:\n{:#?}", output);
+
+        let output = output.expect("Failed to parse input");
+        let output = interpreter.interpret(output);
+        println!("===== Output: {:#?}", output);
     }
 }

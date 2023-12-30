@@ -23,6 +23,22 @@ pub enum Token {
     Colon,
     #[token(",")]
     Comma,
+    #[token(".")]
+    Dot,
+    #[token("..")]
+    DotDot,
+    #[token("...")]
+    DotDotDot,
+    #[token("->")]
+    Arrow,
+    #[token("=>")]
+    FatArrow,
+    #[token("@")]
+    At,
+    #[token("#")]
+    Hash,
+    #[token("$")]
+    Dollar,
 
     #[regex("[_a-zA-Z][_0-9a-zA-Z]*", |lex| lex.slice().parse().ok())]
     Identifier(String),
@@ -30,6 +46,8 @@ pub enum Token {
     Integer(i64),
     #[regex("true|false", |lex| lex.slice().parse().ok())]
     Boolean(bool),
+    #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice().parse().ok())]
+    String(String),
 
     #[token("(")]
     LParen,
@@ -62,6 +80,16 @@ pub enum Token {
     #[token("!=")]
     OperatorNotEqual,
 
+    #[token("<")]
+    OperatorLessThan,
+    #[token("<=")]
+    OperatorLessThanOrEqual,
+    #[token(">")]
+    OperatorGreaterThan,
+    #[token(">=")]
+    OperatorGreaterThanOrEqual,
+    #[token("!")]
+    OperatorNot,
     #[token("&&")]
     OperatorAnd,
     #[token("||")]

@@ -17,7 +17,16 @@ extern {
     "identifier" => Token::Identifier(<String>),
     "int" => Token::Integer(<i64>),
     "bool" => Token::Boolean(<bool>),
+    "string" => Token::String(<String>),
     "::" => Token::DoubleColon,
+    ":" => Token::Colon,
+    "->" => Token::Arrow,
+    "=>" => Token::FatArrow,
+    "@" => Token::At,
+    "#" => Token::Hash,
+    "$" => Token::Dollar,
+    "!" => Token::OperatorNot,
+    "." => Token::Dot,
     "," => Token::Comma,
     "(" => Token::LParen,
     ")" => Token::RParen,
@@ -44,14 +53,52 @@ use super::ast::{Expr, Atom, Opcode};
 // Define the main expressions with proper handling of optional elements and clear precedence
 pub Expr: Expr = {
     <cond:IfExpr> => cond,
-    <block:Block> => Expr::Block(block),
+    <letExpr:LetExpr> => letExpr,
+    <array:ArrayExpr> => array,
+    <object:ObjectExpr> => object,
+    <fnExpr:FnExpr> => fnExpr,
+    <block:BlockExpr> => block,
     <or:OrExpr> => or
 };
 
 // If expression with and without else part
 IfExpr: Expr = {
-    "if" <cond:Expr> "then" <then_part:Expr> "else" <else_part:Expr> => {
+    "if" <cond:Expr> "then" <then_part:BlockExpr> "else" <else_part:BlockExpr> => {
         Expr::IfElse(Box::new(cond), Box::new(then_part), Some(Box::new(else_part)))
+    },
+    "if" <cond:Expr> "then" <then_part:BlockExpr> => {
+        Expr::IfElse(Box::new(cond), Box::new(then_part), None)
+    }
+};
+
+// Let expression with and without type annotation
+LetExpr: Expr = {
+    "let" <name:Ident> "=" <value:Expr> => {
+        Expr::Let(name, Box::new(value))
+    }
+};
+
+// Array expression
+ArrayExpr: Expr = {
+    "[" <elems:Comma<Expr>?> "]" => {
+        Expr::Array(elems.unwrap_or(vec![]))
+    }
+};
+
+// Object expression
+ObjectExpr: Expr = {
+    "@" "{" <elems:Comma<ObjectElem>?> "}" => {
+        Expr::Object(elems.unwrap_or(vec![]))
+    }
+};
+ObjectElem: (String, Expr) = {
+    <key:Ident> ":" <value:Expr> => (key, value)
+};
+
+// Function expression
+FnExpr: Expr = {
+    "fn" "(" <param:Ident?> ")" <body:Expr> => {
+        Expr::Lambda(param, Box::new(body))
     }
 };
 
@@ -69,6 +116,9 @@ Exprs: Vec<Expr> = {
 // Block of expressions (might be empty)
 Block: Vec<Expr> = {
     "{" <exprs:Exprs?> "}" => exprs.unwrap_or(vec![])
+};
+BlockExpr: Expr = {
+    <block:Block> => Expr::Block(block)
 };
 
 // ==== Precedence climbing ====
@@ -104,10 +154,16 @@ MulDivExpr: Expr = BinaryTier<MulDivOp, UnaryExpr>;
 // Unary
 UnaryExpr: Expr = {
     "-" <expr:UnaryExpr> => Expr::UnaryOp(Opcode::Neg, Box::new(expr)),
-    <function:FunctionCallExpr> => function
+    "!" <expr:UnaryExpr> => Expr::UnaryOp(Opcode::Not, Box::new(expr)),
+    <function:FunctionCallArrayIndexExpr> => function
 };
-FunctionCallExpr: Expr = {
-    <callee:FunctionCallExpr> "(" <arg:Expr> ")" => Expr::FunctionCall(Box::new(callee), Box::new(arg)),
+FunctionCallArrayIndexExpr: Expr = {
+    <callee:FunctionCallArrayIndexExpr> "(" <arg:Expr?> ")" => Expr::Call(Box::new(callee), arg.map(Box::new)),
+    <callee:FunctionCallArrayIndexExpr> "[" <index:Expr> "]" => Expr::Index(Box::new(callee), Box::new(index)),
+    <member:MemberAccessExpr> => member
+};
+MemberAccessExpr: Expr = {
+    <callee:MemberAccessExpr> "." <member:Ident> => Expr::Member(Box::new(callee), member),
     <constant:ConstantExpr> => constant,
 };
 ConstantExpr: Expr = {
@@ -122,7 +178,8 @@ Ident: String = <name:"identifier"> => name.to_string();
 Atom: Atom = {
     <num:"int"> => Atom::Num(num),
     <boolean:"bool"> => Atom::Boolean(boolean),
-    <identifier:Ident> => Atom::Identifier(identifier)
+    <identifier:Ident> => Atom::Identifier(identifier),
+    <string:"string"> => Atom::String(string),
 };
 
 // Define a clearer comma-separated list handling
