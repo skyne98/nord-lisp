@@ -6,14 +6,15 @@ pub enum Opcode {
     Div,
     Equal,
     NotEqual,
-    LessThan,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
     Not,
     Neg,
     And,
     Or,
+    Assign,
 }
 
 #[derive(Debug, Clone)]

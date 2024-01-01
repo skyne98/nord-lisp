@@ -44,6 +44,10 @@ extern {
     "&&" => Token::OperatorAnd,
     "==" => Token::OperatorEqual,
     "!=" => Token::OperatorNotEqual,
+    "<" => Token::OperatorLess,
+    "<=" => Token::OperatorLessEqual,
+    ">" => Token::OperatorGreater,
+    ">=" => Token::OperatorGreaterEqual,
   }
 }
 
@@ -58,7 +62,7 @@ pub Expr: Expr = {
     <object:ObjectExpr> => object,
     <fnExpr:FnExpr> => fnExpr,
     <block:BlockExpr> => block,
-    <or:OrExpr> => or
+    <assign:AssignExpr> => assign,
 };
 
 // If expression with and without else part
@@ -87,7 +91,7 @@ ArrayExpr: Expr = {
 
 // Object expression
 ObjectExpr: Expr = {
-    "@" "{" <elems:Comma<ObjectElem>?> "}" => {
+    "#" "{" <elems:Comma<ObjectElem>?> "}" => {
         Expr::Object(elems.unwrap_or(vec![]))
     }
 };
@@ -127,6 +131,10 @@ BinaryTier<Op, NextTier>: Expr = {
     <left:BinaryTier<Op, NextTier>> <op:Op> <right:NextTier> => Expr::BinaryOp(Box::new(left), op, Box::new(right)),
     NextTier
 };
+AssignOp: Opcode = {
+    "=" => Opcode::Assign
+};
+AssignExpr: Expr = BinaryTier<AssignOp, OrExpr>;
 OrOp: Opcode = {
     "||" => Opcode::Or
 };
@@ -137,7 +145,11 @@ AndOp: Opcode = {
 AndExpr: Expr = BinaryTier<AndOp, EqualityExpr>;
 EqualityOp: Opcode = {
     "==" => Opcode::Equal,
-    "!=" => Opcode::NotEqual
+    "!=" => Opcode::NotEqual,
+    "<" => Opcode::Less,
+    "<=" => Opcode::LessEqual,
+    ">" => Opcode::Greater,
+    ">=" => Opcode::GreaterEqual
 };
 EqualityExpr: Expr = BinaryTier<EqualityOp, AddSubExpr>;
 AddSubOp: Opcode = {

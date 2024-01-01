@@ -81,13 +81,13 @@ pub enum Token {
     OperatorNotEqual,
 
     #[token("<")]
-    OperatorLessThan,
+    OperatorLess,
     #[token("<=")]
-    OperatorLessThanOrEqual,
+    OperatorLessEqual,
     #[token(">")]
-    OperatorGreaterThan,
+    OperatorGreater,
     #[token(">=")]
-    OperatorGreaterThanOrEqual,
+    OperatorGreaterEqual,
     #[token("!")]
     OperatorNot,
     #[token("&&")]

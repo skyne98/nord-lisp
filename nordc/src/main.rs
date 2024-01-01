@@ -17,6 +17,9 @@ fn main() -> Result<()> {
         // Read
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
+        if input.trim().len() == 0 {
+            continue;
+        }
 
         // Lex
         let lexer = lexer::Token::lexer(&input);
@@ -30,10 +33,15 @@ fn main() -> Result<()> {
         let lexer = lalrpop_lexer::Lexer::new(&input);
         let parser = parser::ExprParser::new();
         let output = parser.parse(lexer);
+        match &output {
+            Ok(output) => println!("===== AST:\n{:#?}", output),
+            Err(err) => {
+                println!("===== AST Error:\n{:#?}", err);
+                continue;
+            }
+        }
 
-        println!("===== AST:\n{:#?}", output);
-
-        let output = output.expect("Failed to parse input");
+        let output = output.unwrap();
         let output = interpreter.interpret(output);
         println!("===== Output: {:#?}", output);
     }
