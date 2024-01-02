@@ -65,6 +65,8 @@ fn main() -> Result<()> {
             }
             let output = execute(&mut interpreter, &input, cli.silent)?;
             if cli.silent == false {
+                println!();
+                println!("===== Output:");
                 println!("{}", output);
             }
         }
