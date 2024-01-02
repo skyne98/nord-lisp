@@ -54,8 +54,6 @@ impl Interpreter {
                     for scope in self.scopes.iter().rev() {
                         if let Some(value) = scope.get(&name) {
                             return Ok(value.clone());
-                        } else {
-                            return Err(anyhow::anyhow!("Undefined variable: {}", name));
                         }
                     }
                     Err(anyhow::anyhow!("Undefined variable: {}", name))?
