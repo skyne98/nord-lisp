@@ -4,6 +4,7 @@ pub enum Opcode {
     Sub,
     Mul,
     Div,
+    Mod,
     Equal,
     NotEqual,
     Less,

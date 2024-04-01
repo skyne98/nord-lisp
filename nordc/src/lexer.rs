@@ -74,6 +74,8 @@ pub enum Token {
     OperatorMul,
     #[token("/")]
     OperatorDiv,
+    #[token("%")]
+    OperatorMod,
 
     #[token("==")]
     OperatorEqual,

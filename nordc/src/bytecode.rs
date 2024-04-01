@@ -6,33 +6,51 @@ use anyhow::{Context, Result};
 pub enum Bytecode {
     ConstI64(i64),
     AddI64,
+    SubI64,
     MulI64,
+    DivI64,
+    ModI64,
 }
 
 /// Convert an AST node to a sequence of bytecode instructions.
-pub fn compile(ast: &Expr) -> Vec<Bytecode> {
+pub fn compile(ast: &Expr) -> Result<Vec<Bytecode>> {
     let mut bytecode = Vec::new();
-    compile_expr(ast, &mut bytecode);
-    bytecode
+    compile_expr(ast, &mut bytecode)?;
+    Ok(bytecode)
 }
 /// Compile an AST expression to bytecode.
-fn compile_expr(ast: &Expr, bytecode: &mut Vec<Bytecode>) {
+fn compile_expr(ast: &Expr, bytecode: &mut Vec<Bytecode>) -> Result<()> {
     match ast {
         Expr::Constant(atom) => match atom {
             Atom::Num(num) => bytecode.push(Bytecode::ConstI64(*num)),
-            _ => unimplemented!("Unknown constant: {:?}", atom),
+            _ => return Err(anyhow::anyhow!("Unsupported atom: {:?}", atom)),
         },
         Expr::BinaryOp(lhs, opcode, rhs) => {
-            compile_expr(lhs, bytecode);
-            compile_expr(rhs, bytecode);
+            compile_expr(lhs, bytecode)?;
+            compile_expr(rhs, bytecode)?;
             match opcode {
                 Opcode::Add => bytecode.push(Bytecode::AddI64),
                 Opcode::Mul => bytecode.push(Bytecode::MulI64),
-                _ => unimplemented!("Unknown opcode: {:?}", opcode),
+                Opcode::Sub => bytecode.push(Bytecode::SubI64),
+                Opcode::Div => bytecode.push(Bytecode::DivI64),
+                Opcode::Mod => bytecode.push(Bytecode::ModI64),
+                _ => return Err(anyhow::anyhow!("Unsupported opcode: {:?}", opcode)),
             }
         }
-        _ => unimplemented!("Unknown expression: {:?}", ast),
+        Expr::UnaryOp(opcode, expr) => {
+            match opcode {
+                Opcode::Neg => {
+                    bytecode.push(Bytecode::ConstI64(0));
+                    compile_expr(expr, bytecode)?;
+                    bytecode.push(Bytecode::SubI64);
+                }
+                _ => return Err(anyhow::anyhow!("Unsupported opcode: {:?}", opcode)),
+            }
+        }
+        _ => return Err(anyhow::anyhow!("Unsupported expression: {:?}", ast)),
     }
+
+    Ok(())
 }
 
 /// Convert a sequence of bytecode instructions to a WAT string.
@@ -50,6 +68,15 @@ pub fn to_wat_module(bytecode: &[Bytecode]) -> String {
             }
             Bytecode::MulI64 => {
                 wat.push_str("    i64.mul\n");
+            }
+            Bytecode::SubI64 => {
+                wat.push_str("    i64.sub\n");
+            }
+            Bytecode::DivI64 => {
+                wat.push_str("    i64.div_s\n");
+            }
+            Bytecode::ModI64 => {
+                wat.push_str("    i64.rem_s\n");
             }
         }
     }

@@ -1,15 +1,20 @@
+#![feature(try_blocks)]
+
 pub mod ast;
 mod lalrpop_lexer;
 pub mod lexer;
 pub mod bytecode;
 mod runtime;
 
-use std::io::Read;
+use std::io::{Read, Write};
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use lalrpop_util::lalrpop_mod;
 use logos::Logos;
+use tempfile::NamedTempFile;
+use wasm_opt::base::ModuleReader;
+use wasm_opt::OptimizationOptions;
 
 lalrpop_mod!(pub parser); // synthesized by LALRPOP
 
@@ -41,12 +46,15 @@ fn main() -> Result<()> {
         loop {
             // Read a line from stdin
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-            if input.trim().is_empty() {
-                continue;
-            }
-            let output = execute(&input, cli.silent)?;
-            println!("{}", output);
+            let result: Result<String> = try {
+                std::io::stdin().read_line(&mut input)?;
+                if input.trim().is_empty() {
+                    continue;
+                }
+                let output = execute(&input, cli.silent)?;
+                output
+            };
+            println!("{:?}", result);
         }
     } else if let Some(script) = cli.execute {
         let output = execute(&script, cli.silent)?;
@@ -65,7 +73,6 @@ fn main() -> Result<()> {
             }
             let output = execute(&input, cli.silent)?;
             if cli.silent == false {
-                println!();
                 println!("===== Output:");
                 println!("{}", output);
             }
@@ -107,7 +114,7 @@ fn execute(
 
     // Get the bytecode
     let ast = output.map_err(|err| anyhow::anyhow!("AST Error: {:#?}", err))?;
-    let bytecode = bytecode::compile(&ast);
+    let bytecode = bytecode::compile(&ast)?;
     if silent == false {
         println!("===== Bytecode:\n{:#?}", bytecode);
         println!();
@@ -115,13 +122,24 @@ fn execute(
 
     // Compile to Wasm
     let wasm = bytecode::to_wasm_module(&bytecode).context("Failed to compile to Wasm")?;
+    let wasm_opt_input_path = NamedTempFile::new()?.into_temp_path();
+    let wasm_opt_output_path = NamedTempFile::new()?.into_temp_path();
+    std::fs::write(&wasm_opt_input_path, &wasm)?;
+    OptimizationOptions::new_opt_level_4().run(&wasm_opt_input_path, &wasm_opt_output_path)?;
+    let mut wasm_opt_output = Vec::new();
+    std::fs::File::open(&wasm_opt_output_path)?.read_to_end(&mut wasm_opt_output)?;
+    wasm_opt_input_path.close()?;
+    wasm_opt_output_path.close()?;
     if silent == false {
-        println!("===== Wasm:\n{:#?}", wasm);
+        let from_size = wasm.len();
+        let to_size = wasm_opt_output.len();
+        println!("===== Wasm (before optimization): {} bytes", from_size);
+        println!("===== Wasm (after optimization): {} bytes", to_size);
         println!();
     }
 
     // Run the Wasm
-    let mut runtime = runtime::Runtime::new(&wasm)?;
+    let mut runtime = runtime::Runtime::new(&wasm_opt_output)?;
     let result = runtime.run::<i64>()?;
     Ok(result.to_string())
 }

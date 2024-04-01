@@ -40,6 +40,7 @@ extern {
     "-" => Token::OperatorSub,
     "*" => Token::OperatorMul,
     "/" => Token::OperatorDiv,
+    "%" => Token::OperatorMod,
     "||" => Token::OperatorOr,
     "&&" => Token::OperatorAnd,
     "==" => Token::OperatorEqual,
@@ -159,7 +160,8 @@ AddSubOp: Opcode = {
 AddSubExpr: Expr = BinaryTier<AddSubOp, MulDivExpr>;
 MulDivOp: Opcode = {
     "*" => Opcode::Mul,
-    "/" => Opcode::Div
+    "/" => Opcode::Div,
+    "%" => Opcode::Mod
 };
 MulDivExpr: Expr = BinaryTier<MulDivOp, UnaryExpr>;
 
