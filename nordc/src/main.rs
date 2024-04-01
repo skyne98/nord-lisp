@@ -67,14 +67,17 @@ fn main() -> Result<()> {
         // Interactive mode: read from stdin
         loop {
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            if input.trim().is_empty() {
-                continue;
-            }
-            let output = execute(&input, cli.silent)?;
+            let result: Result<String> = try {
+                std::io::stdin().read_line(&mut input)?;
+                if input.trim().is_empty() {
+                    continue;
+                }
+                let output = execute(&input, cli.silent)?;
+                output
+            };
             if cli.silent == false {
                 println!("===== Output:");
-                println!("{}", output);
+                println!("{:?}", result);
             }
         }
     }
@@ -134,7 +137,11 @@ fn execute(
         let from_size = wasm.len();
         let to_size = wasm_opt_output.len();
         println!("===== Wasm (before optimization): {} bytes", from_size);
+        let wat_before_opt = wasmprinter::print_bytes(&wasm).context("Failed to print Wasm")?;
+        println!("{}", wat_before_opt);
         println!("===== Wasm (after optimization): {} bytes", to_size);
+        let wat_after_opt = wasmprinter::print_bytes(&wasm_opt_output).context("Failed to print Wasm")?;
+        println!("{}", wat_after_opt);
         println!();
     }
 
