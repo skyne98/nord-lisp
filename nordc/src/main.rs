@@ -1,11 +1,12 @@
 pub mod ast;
-pub mod interpreter;
 mod lalrpop_lexer;
 pub mod lexer;
+pub mod bytecode;
+mod runtime;
 
 use std::io::Read;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use lalrpop_util::lalrpop_mod;
 use logos::Logos;
@@ -35,7 +36,6 @@ struct Cli {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let mut interpreter = interpreter::Interpreter::new();
 
     if cli.std {
         loop {
@@ -45,15 +45,15 @@ fn main() -> Result<()> {
             if input.trim().is_empty() {
                 continue;
             }
-            let output = execute(&mut interpreter, &input, cli.silent)?;
+            let output = execute(&input, cli.silent)?;
             println!("{}", output);
         }
     } else if let Some(script) = cli.execute {
-        let output = execute(&mut interpreter, &script, cli.silent)?;
+        let output = execute(&script, cli.silent)?;
         println!("{}", output);
     } else if let Some(script_path) = cli.input {
         let input = std::fs::read_to_string(script_path)?;
-        let output = execute(&mut interpreter, &input, cli.silent)?;
+        let output = execute(&input, cli.silent)?;
         println!("{}", output);
     } else {
         // Interactive mode: read from stdin
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
             if input.trim().is_empty() {
                 continue;
             }
-            let output = execute(&mut interpreter, &input, cli.silent)?;
+            let output = execute(&input, cli.silent)?;
             if cli.silent == false {
                 println!();
                 println!("===== Output:");
@@ -76,7 +76,6 @@ fn main() -> Result<()> {
 
 /// Executes the script, lexing, parsing, and interpreting the input.
 fn execute(
-    interpreter: &mut interpreter::Interpreter,
     input: &str,
     silent: bool,
 ) -> Result<String> {
@@ -90,7 +89,7 @@ fn execute(
         println!();
     }
 
-    // Parse and evaluate
+    // Parse
     let lexer = lalrpop_lexer::Lexer::new(&input);
     let parser = parser::ExprParser::new();
     let output = parser.parse(lexer);
@@ -98,6 +97,7 @@ fn execute(
         Ok(output) => {
             if silent == false {
                 println!("===== AST:\n{:#?}", output);
+                println!();
             }
         }
         Err(err) => {
@@ -105,7 +105,23 @@ fn execute(
         }
     }
 
-    let output = output.unwrap();
-    let result = interpreter.interpret(output);
-    Ok(format!("{:#?}", result))
+    // Get the bytecode
+    let ast = output.map_err(|err| anyhow::anyhow!("AST Error: {:#?}", err))?;
+    let bytecode = bytecode::compile(&ast);
+    if silent == false {
+        println!("===== Bytecode:\n{:#?}", bytecode);
+        println!();
+    }
+
+    // Compile to Wasm
+    let wasm = bytecode::to_wasm_module(&bytecode).context("Failed to compile to Wasm")?;
+    if silent == false {
+        println!("===== Wasm:\n{:#?}", wasm);
+        println!();
+    }
+
+    // Run the Wasm
+    let mut runtime = runtime::Runtime::new(&wasm)?;
+    let result = runtime.run::<i64>()?;
+    Ok(result.to_string())
 }
