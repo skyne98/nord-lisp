@@ -125,28 +125,9 @@ fn execute(
 
     // Compile to Wasm
     let wasm = bytecode::to_wasm_module(&bytecode).context("Failed to compile to Wasm")?;
-    let wasm_opt_input_path = NamedTempFile::new()?.into_temp_path();
-    let wasm_opt_output_path = NamedTempFile::new()?.into_temp_path();
-    std::fs::write(&wasm_opt_input_path, &wasm)?;
-    OptimizationOptions::new_opt_level_4().run(&wasm_opt_input_path, &wasm_opt_output_path)?;
-    let mut wasm_opt_output = Vec::new();
-    std::fs::File::open(&wasm_opt_output_path)?.read_to_end(&mut wasm_opt_output)?;
-    wasm_opt_input_path.close()?;
-    wasm_opt_output_path.close()?;
-    if silent == false {
-        let from_size = wasm.len();
-        let to_size = wasm_opt_output.len();
-        println!("===== Wasm (before optimization): {} bytes", from_size);
-        let wat_before_opt = wasmprinter::print_bytes(&wasm).context("Failed to print Wasm")?;
-        println!("{}", wat_before_opt);
-        println!("===== Wasm (after optimization): {} bytes", to_size);
-        let wat_after_opt = wasmprinter::print_bytes(&wasm_opt_output).context("Failed to print Wasm")?;
-        println!("{}", wat_after_opt);
-        println!();
-    }
 
     // Run the Wasm
-    let mut runtime = runtime::Runtime::new(&wasm_opt_output)?;
+    let mut runtime = runtime::Runtime::new(&wasm)?;
     let result = runtime.run::<i64>()?;
     Ok(result.to_string())
 }
