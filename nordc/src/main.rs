@@ -3,7 +3,7 @@
 pub mod ast;
 mod lalrpop_lexer;
 pub mod lexer;
-pub mod bytecode;
+pub mod mir;
 mod runtime;
 
 use std::io::{Read, Write};
@@ -15,6 +15,7 @@ use logos::Logos;
 use tempfile::NamedTempFile;
 use wasm_opt::base::ModuleReader;
 use wasm_opt::OptimizationOptions;
+use wasmtime::{Config, Engine};
 
 lalrpop_mod!(pub parser); // synthesized by LALRPOP
 
@@ -117,17 +118,24 @@ fn execute(
 
     // Get the bytecode
     let ast = output.map_err(|err| anyhow::anyhow!("AST Error: {:#?}", err))?;
-    let bytecode = bytecode::compile(&ast)?;
+    let bytecode = mir::compile(&ast)?;
     if silent == false {
         println!("===== Bytecode:\n{:#?}", bytecode);
         println!();
     }
 
     // Compile to Wasm
-    let wasm = bytecode::to_wasm_module(&bytecode).context("Failed to compile to Wasm")?;
+    let wasm = mir::to_wasm_module(&bytecode).context("Failed to compile to Wasm")?;
 
     // Run the Wasm
-    let mut runtime = runtime::Runtime::new(&wasm)?;
-    let result = runtime.run::<i64>()?;
-    Ok(result.to_string())
+    let config = Config::new();
+    let engine = Engine::new(&config)?;
+    let module = wasmtime::Module::new(&engine, wasm)?;
+    let linker = wasmtime::Linker::new(&engine);
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = linker.instantiate(&mut store, &module)?;
+
+    let func = instance.get_typed_func::<(), i64>(&mut store, "main")?;
+    let result = func.call(&mut store, ())?;
+    Ok(format!("{:?}", result))
 }
