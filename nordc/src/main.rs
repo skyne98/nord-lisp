@@ -6,6 +6,7 @@ pub mod lexer;
 pub mod mir;
 mod runtime;
 mod mir_context;
+mod mir_var_context;
 
 use std::io::Write;
 

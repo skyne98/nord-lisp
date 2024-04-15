@@ -1,9 +1,7 @@
-use std::cell::RefCell;
 use std::collections::{HashMap};
-use std::rc::Rc;
 use crate::ast::{Atom, Expr, Opcode};
 use eyre::{ContextCompat, Result};
-use walrus::{InstrSeqBuilder, LocalId, ModuleLocals, ValType};
+use walrus::{ValType};
 use crate::mir_context::{MirContext, MirSharedContext};
 
 /// Opcodes for the Nord's stack based virtual machine.
