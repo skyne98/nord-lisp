@@ -16,6 +16,16 @@ pub enum Token {
     KeywordElse,
     #[token("return")]
     KeywordReturn,
+    #[token("block")]
+    KeywordBlock,
+    #[token("end")]
+    KeywordEnd,
+    #[token("loop")]
+    KeywordLoop,
+    #[token("break")]
+    KeywordBreak,
+    #[token("continue")]
+    KeywordContinue,
 
     #[token("::")]
     DoubleColon,

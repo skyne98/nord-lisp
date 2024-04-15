@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
-use std::io::Read;
+use std::cell::RefCell;
+use std::collections::{HashMap};
+use std::rc::Rc;
 use crate::ast::{Atom, Expr, Opcode};
-use eyre::{ContextCompat, Result, WrapErr};
-use tempfile::NamedTempFile;
+use eyre::{ContextCompat, Result};
 use walrus::{InstrSeqBuilder, LocalId, ModuleLocals, ValType};
-use wasm_opt::{FileType, OptimizationOptions};
+use crate::mir_context::{MirContext, MirSharedContext};
 
 /// Opcodes for the Nord's stack based virtual machine.
 #[derive(Debug, Clone)]
@@ -117,132 +117,117 @@ fn compile_expr(ast: &Expr, bytecode: &mut Vec<Mir>, locals: &mut HashMap<String
     Ok(())
 }
 
-pub fn mir_to_wasm(op: &Mir, builder: &mut InstrSeqBuilder, locals: &mut ModuleLocals, locals_hash: &mut HashMap<u32, LocalId>) -> Result<()> {
-    match op {
-        Mir::ConstI64(num) => {
-            builder.i64_const(*num);
-        }
-        Mir::AddI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64Add);
-        }
-        Mir::SubI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64Sub);
-        }
-        Mir::MulI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64Mul);
-        }
-        Mir::DivI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64DivS);
-        }
-        Mir::ModI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64RemS);
-        }
-        Mir::GreaterThanI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64GtS);
-            builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
-        }
-        Mir::LessThanI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64LtS);
-            builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
-        }
-        Mir::EqualI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64Eq);
-            builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
-        }
-        Mir::NotEqualI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64Ne);
-            builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
-        }
-        Mir::GreaterThanOrEqualI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64GeS);
-            builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
-        }
-        Mir::LessThanOrEqualI64 => {
-            builder.binop(walrus::ir::BinaryOp::I64LeS);
-            builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
-        }
-        Mir::LocalGet(index) => {
-            if locals_hash.get(index).is_none() {
-                let local = locals.add(walrus::ValType::I64);
-                locals_hash.insert(*index, local);
+pub fn mir_to_wasm(op: &Mir, context: MirSharedContext) -> Result<()> {
+    context.borrow_mut().function_body(|mut builder| {
+        match op {
+            Mir::ConstI64(num) => {
+                builder.i64_const(*num);
             }
-
-            let index = locals_hash.get(index).copied().expect("Local not found");
-            builder.local_get(index);
-        }
-        Mir::LocalSet(index) => {
-            if locals_hash.get(index).is_none() {
-                let local = locals.add(walrus::ValType::I64);
-                locals_hash.insert(*index, local);
+            Mir::AddI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64Add);
             }
-
-            let index = locals_hash.get(index).copied().expect("Local not found");
-            builder.local_set(index);
-        }
-        Mir::LocalTee(index) => {
-            if locals_hash.get(index).is_none() {
-                let local = locals.add(walrus::ValType::I64);
-                locals_hash.insert(*index, local);
+            Mir::SubI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64Sub);
             }
-
-            let index = locals_hash.get(index).copied().expect("Local not found");
-            builder.local_tee(index);
-        }
-        Mir::Block(ops) => {
-            builder.block(ValType::I64, |block| {
-                for op in ops {
-                    mir_to_wasm(op, block, locals, locals_hash).expect("Failed to compile instruction");
+            Mir::MulI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64Mul);
+            }
+            Mir::DivI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64DivS);
+            }
+            Mir::ModI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64RemS);
+            }
+            Mir::GreaterThanI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64GtS);
+                builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
+            }
+            Mir::LessThanI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64LtS);
+                builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
+            }
+            Mir::EqualI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64Eq);
+                builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
+            }
+            Mir::NotEqualI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64Ne);
+                builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
+            }
+            Mir::GreaterThanOrEqualI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64GeS);
+                builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
+            }
+            Mir::LessThanOrEqualI64 => {
+                builder.binop(walrus::ir::BinaryOp::I64LeS);
+                builder.unop(walrus::ir::UnaryOp::I64ExtendUI32);
+            }
+            Mir::LocalGet(index) => {
+                if let Some(local) = context.borrow_mut().get_local(*index) {
+                    builder.local_get(local);
+                } else {
+                    eyre::bail!("Local not found")
                 }
-            });
-        }
-        Mir::IfElse(then_ops, else_ops) => {
-            builder.unop(walrus::ir::UnaryOp::I32WrapI64);
-            builder.if_else(ValType::I64, |then| {
-                for op in then_ops {
-                    mir_to_wasm(op, then, locals, locals_hash).expect("Failed to compile instruction");
-                }
-            }, |else_builder| {
-                // TODO: This is a hack to get the else block to compile.
-                let mut locals = ModuleLocals::default();
-                let mut locals_hash = HashMap::new();
+            }
+            Mir::LocalSet(index) => {
+                let index = context.borrow_mut().get_or_add_local(*index, walrus::ValType::I64);
+                builder.local_set(index);
+            }
+            Mir::LocalTee(index) => {
+                let index = context.borrow_mut().get_or_add_local(*index, walrus::ValType::I64);
+                builder.local_tee(index);
+            }
+            Mir::Block(ops) => {
+                builder.block(ValType::I64, |block| {
+                    for op in ops {
+                        mir_to_wasm(op, context.clone()).expect("Failed to compile instruction");
+                    }
+                });
+            }
+            Mir::IfElse(then_ops, else_ops) => {
+                builder.unop(walrus::ir::UnaryOp::I32WrapI64);
 
                 if let Some(else_ops) = else_ops {
-                    for op in else_ops {
-                        mir_to_wasm(op, else_builder, &mut locals, &mut locals_hash).expect("Failed to compile instruction");
-                    }
-                }
-            });
+                    builder.if_else(ValType::I64, |then| {
+                        for op in then_ops {
+                            mir_to_wasm(op, context.clone()).expect("Failed to compile instruction");
+                        }
+                    }, |else_builder| {
+                        for op in else_ops {
+                            mir_to_wasm(op, context.clone()).expect("Failed to compile instruction");
+                        }
+                    });
+                } else {}
+            }
+            _ => unimplemented!("Unsupported instruction: {:?}", op),
         }
-        _ => unimplemented!("Unsupported instruction: {:?}", op),
-    }
+
+        Ok(())
+    })?;
 
     Ok(())
 }
 pub fn to_wat_module(bytecode: &[Mir]) -> Vec<u8> {
     let config = walrus::ModuleConfig::new();
-    let mut module = walrus::Module::with_config(config);
-    let mut builder = walrus::FunctionBuilder::new(&mut module.types, &[], &[ValType::I64]);
-    let mut seq = builder.func_body();
-
-    let locals = &mut module.locals;
-    let mut locals_hash = HashMap::new();
+    let module = walrus::Module::with_config(config);
+    let context = MirContext::new(module);
+    context.borrow_mut().set_new_builder(&[], &[walrus::ValType::I64]);
 
     for instr in bytecode {
-        mir_to_wasm(instr, &mut seq, locals, &mut locals_hash).expect("Failed to compile instruction");
+        mir_to_wasm(instr, context.clone()).expect("Failed to compile instruction");
     }
 
-    drop(seq);
-    let function = builder.finish(vec![], &mut module.funcs);
-    module.exports.add("main", function);
+    let function = context.borrow_mut().finish_builder(vec![]).expect("Failed to finish builder");
+    context.borrow_mut().export_function("main", function);
 
-    module.emit_wasm()
+    let mut context = context.borrow_mut();
+    context.emit_wasm()
 }
 pub fn to_wasm_module(bytecode: &[Mir]) -> Result<Vec<u8>> {
     let wasm = to_wat_module(bytecode);
     let wat = wasmprinter::print_bytes(&wasm).map_err(|err| eyre::eyre!("Failed to print Wasm: {:#?}", err))?;
     println!("===== Wasm: {} bytes", wasm.len());
     println!("{}", wat);
-    println!();
 
     Ok(wasm)
 }

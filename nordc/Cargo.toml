@@ -15,6 +15,7 @@ wasmprinter = "0.202.0"
 walrus = "0.20.3"
 eyre = "0.6.12"
 color-eyre = "0.6.3"
+reedline = "0.31.0"
 
 [build-dependencies]
 lalrpop = "0.20.0"

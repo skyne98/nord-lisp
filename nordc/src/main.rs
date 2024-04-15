@@ -1,22 +1,21 @@
 #![feature(try_blocks)]
 
 pub mod ast;
-mod lalrpop_lexer;
+mod lexer_ext;
 pub mod lexer;
 pub mod mir;
 mod runtime;
+mod mir_context;
 
-use std::io::{Read, Write};
+use std::io::Write;
 
 use color_eyre::eyre::Result;
 use clap::Parser;
 use eyre::WrapErr;
 use lalrpop_util::lalrpop_mod;
 use logos::Logos;
-use tempfile::NamedTempFile;
-use wasm_opt::base::ModuleReader;
-use wasm_opt::OptimizationOptions;
 use wasmtime::{Config, Engine};
+use reedline::{DefaultPrompt, DefaultPromptSegment, EditCommand, Emacs, Keybindings, KeyCode, KeyModifiers, Reedline, ReedlineEvent, Signal};
 
 lalrpop_mod!(pub parser); // synthesized by LALRPOP
 
@@ -68,19 +67,30 @@ fn main() -> Result<()> {
         println!("{}", output);
     } else {
         // Interactive mode: read from stdin
+        let mut line_editor = Reedline::create();
+
+        let prompt = DefaultPrompt::new(DefaultPromptSegment::Basic("nord".to_string()), DefaultPromptSegment::Empty);
+
         loop {
-            let mut input = String::new();
             let result: Result<String> = try {
-                std::io::stdin().read_line(&mut input)?;
-                if input.trim().is_empty() {
-                    continue;
+                let signal = line_editor.read_line(&prompt);
+                match signal {
+                    Ok(Signal::Success(buffer)) => {
+                        let output = execute(&buffer, cli.silent)?;
+                        output
+                    }
+                    Ok(Signal::CtrlD) | Ok(Signal::CtrlC) => {
+                        break;
+                    }
+                    x => {
+                        eyre::bail!("Unexpected signal: {:?}", x)
+                    }
                 }
-                let output = execute(&input, cli.silent)?;
-                output
             };
             if cli.silent == false {
                 println!("===== Output:");
                 println!("{:?}", result);
+                println!();
             }
         }
     }
@@ -103,7 +113,7 @@ fn execute(
     }
 
     // Parse
-    let lexer = lalrpop_lexer::Lexer::new(&input);
+    let lexer = lexer_ext::Lexer::new(&input);
     let parser = parser::ExprParser::new();
     let output = parser.parse(lexer);
     match &output {

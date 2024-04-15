@@ -2,7 +2,7 @@ grammar;
 
 // ===== LEXER =====
 use super::lexer::Token;
-use super::lalrpop_lexer::LexicalError;
+use super::lexer_ext::LexicalError;
 
 extern {
   type Location = usize;
@@ -14,6 +14,11 @@ extern {
     "if" => Token::KeywordIf,
     "then" => Token::KeywordThen,
     "else" => Token::KeywordElse,
+    "block" => Token::KeywordBlock,
+    "continue" => Token::KeywordContinue,
+    "break" => Token::KeywordBreak,
+    "return" => Token::KeywordReturn,
+    "end" => Token::KeywordEnd,
     "identifier" => Token::Identifier(<String>),
     "int" => Token::Integer(<i64>),
     "bool" => Token::Boolean(<bool>),
@@ -68,10 +73,10 @@ pub Expr: Expr = {
 
 // If expression with and without else part
 IfExpr: Expr = {
-    "if" <cond:Expr> "then" <then_part:BlockExpr> "else" <else_part:BlockExpr> => {
+    "if" <cond:Expr> "then" <then_part:BlockNoKeywordExpr> "else" <else_part:BlockNoKeywordExpr> "end" => {
         Expr::IfElse(Box::new(cond), Box::new(then_part), Some(Box::new(else_part)))
     },
-    "if" <cond:Expr> "then" <then_part:BlockExpr> => {
+    "if" <cond:Expr> "then" <then_part:BlockNoKeywordExpr> "end" => {
         Expr::IfElse(Box::new(cond), Box::new(then_part), None)
     }
 };
@@ -119,11 +124,14 @@ Exprs: Vec<Expr> = {
 };
 
 // Block of expressions (might be empty)
-Block: Vec<Expr> = {
-    "{" <exprs:Exprs?> "}" => exprs.unwrap_or(vec![])
+BlockBody: Vec<Expr> = {
+    <exprs:Exprs?> => exprs.unwrap_or(vec![])
 };
 BlockExpr: Expr = {
-    <block:Block> => Expr::Block(block)
+    "block" <block:BlockBody> "end" => Expr::Block(block)
+};
+BlockNoKeywordExpr: Expr = {
+    <block:BlockBody> => Expr::Block(block)
 };
 
 // ==== Precedence climbing ====
