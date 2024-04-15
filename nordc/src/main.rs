@@ -8,8 +8,9 @@ mod runtime;
 
 use std::io::{Read, Write};
 
-use anyhow::{Context, Result};
+use color_eyre::eyre::Result;
 use clap::Parser;
+use eyre::WrapErr;
 use lalrpop_util::lalrpop_mod;
 use logos::Logos;
 use tempfile::NamedTempFile;
@@ -41,6 +42,7 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
     let cli = Cli::parse();
 
     if cli.std {
@@ -112,12 +114,12 @@ fn execute(
             }
         }
         Err(err) => {
-            return Err(anyhow::anyhow!("AST Error: {:#?}", err));
+            return Err(eyre::eyre!("AST Error: {:#?}", err));
         }
     }
 
     // Get the bytecode
-    let ast = output.map_err(|err| anyhow::anyhow!("AST Error: {:#?}", err))?;
+    let ast = output.map_err(|err| eyre::eyre!("AST Error: {:#?}", err))?;
     let bytecode = mir::compile(&ast)?;
     if silent == false {
         println!("===== Bytecode:\n{:#?}", bytecode);
@@ -125,17 +127,17 @@ fn execute(
     }
 
     // Compile to Wasm
-    let wasm = mir::to_wasm_module(&bytecode).context("Failed to compile to Wasm")?;
+    let wasm = mir::to_wasm_module(&bytecode).wrap_err_with(|| "Failed to compile to Wasm")?;
 
     // Run the Wasm
     let config = Config::new();
-    let engine = Engine::new(&config)?;
-    let module = wasmtime::Module::new(&engine, wasm)?;
+    let engine = Engine::new(&config).map_err(|err| eyre::eyre!("Failed to create engine: {:#?}", err))?;
+    let module = wasmtime::Module::new(&engine, wasm).map_err(|err| eyre::eyre!("Failed to create module: {:#?}", err))?;
     let linker = wasmtime::Linker::new(&engine);
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = linker.instantiate(&mut store, &module)?;
+    let instance = linker.instantiate(&mut store, &module).map_err(|err| eyre::eyre!("Failed to instantiate module: {:#?}", err))?;
 
-    let func = instance.get_typed_func::<(), i64>(&mut store, "main")?;
-    let result = func.call(&mut store, ())?;
+    let func = instance.get_typed_func::<(), i64>(&mut store, "main").map_err(|err| eyre::eyre!("Failed to get function: {:#?}", err))?;
+    let result = func.call(&mut store, ()).map_err(|err| eyre::eyre!("Failed to call function: {:#?}", err))?;
     Ok(format!("{:?}", result))
 }

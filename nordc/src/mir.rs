@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use crate::ast::{Atom, Expr, Opcode};
-use anyhow::{Context, Result};
+use eyre::{ContextCompat, Result, WrapErr};
 use tempfile::NamedTempFile;
 use walrus::{InstrSeqBuilder, LocalId, ModuleLocals, ValType};
 use wasm_opt::{FileType, OptimizationOptions};
@@ -48,7 +48,7 @@ fn compile_expr(ast: &Expr, bytecode: &mut Vec<Mir>, locals: &mut HashMap<String
                 let index = locals.entry(ident.clone()).or_insert(index);
                 bytecode.push(Mir::LocalGet(*index));
             }
-            _ => return Err(anyhow::anyhow!("Unsupported atom: {:?}", atom)),
+            _ => return Err(eyre::eyre!("Unsupported atom: {:?}", atom)),
         },
         Expr::BinaryOp(lhs, opcode, rhs) => {
             compile_expr(lhs, bytecode, locals)?;
@@ -67,13 +67,13 @@ fn compile_expr(ast: &Expr, bytecode: &mut Vec<Mir>, locals: &mut HashMap<String
                 Opcode::LessEqual => bytecode.push(Mir::LessThanOrEqualI64),
                 Opcode::Assign => {
                     if let Expr::Constant(Atom::Identifier(ident)) = &**lhs {
-                        let index = locals.get(ident).copied().context("Undefined variable")?;
+                        let index = locals.get(ident).copied().wrap_err_with(|| format!("Unknown variable: {}", ident))?;
                         bytecode.push(Mir::LocalSet(index));
                     } else {
-                        return Err(anyhow::anyhow!("Invalid assignment target: {:?}", lhs));
+                        return Err(eyre::eyre!("Invalid assignment target: {:?}", lhs));
                     }
                 }
-                _ => return Err(anyhow::anyhow!("Unsupported opcode: {:?}", opcode)),
+                _ => return Err(eyre::eyre!("Unsupported opcode: {:?}", opcode)),
             }
         }
         Expr::UnaryOp(opcode, expr) => {
@@ -83,7 +83,7 @@ fn compile_expr(ast: &Expr, bytecode: &mut Vec<Mir>, locals: &mut HashMap<String
                     compile_expr(expr, bytecode, locals)?;
                     bytecode.push(Mir::SubI64);
                 }
-                _ => return Err(anyhow::anyhow!("Unsupported opcode: {:?}", opcode)),
+                _ => return Err(eyre::eyre!("Unsupported opcode: {:?}", opcode)),
             }
         }
         Expr::Let(ident, expr) => {
@@ -111,7 +111,7 @@ fn compile_expr(ast: &Expr, bytecode: &mut Vec<Mir>, locals: &mut HashMap<String
             }
             bytecode.push(Mir::IfElse(then_vec, else_vec));
         }
-        _ => return Err(anyhow::anyhow!("Unsupported expression: {:?}", ast)),
+        _ => return Err(eyre::eyre!("Unsupported expression: {:?}", ast)),
     }
 
     Ok(())
@@ -239,24 +239,10 @@ pub fn to_wat_module(bytecode: &[Mir]) -> Vec<u8> {
 }
 pub fn to_wasm_module(bytecode: &[Mir]) -> Result<Vec<u8>> {
     let wasm = to_wat_module(bytecode);
-    let wat = wasmprinter::print_bytes(&wasm).context("Failed to print Wasm")?;
-    println!("===== Wasm (before optimization): {} bytes", wasm.len());
+    let wat = wasmprinter::print_bytes(&wasm).map_err(|err| eyre::eyre!("Failed to print Wasm: {:#?}", err))?;
+    println!("===== Wasm: {} bytes", wasm.len());
     println!("{}", wat);
     println!();
 
-    let wasm_opt_input_path = NamedTempFile::new()?.into_temp_path();
-    let wasm_opt_output_path = NamedTempFile::new()?.into_temp_path();
-    std::fs::write(&wasm_opt_input_path, &wasm)?;
-    OptimizationOptions::new_opt_level_4().reader_file_type(FileType::Any).run(&wasm_opt_input_path, &wasm_opt_output_path)?;
-    let mut wasm_opt_output = Vec::new();
-    std::fs::File::open(&wasm_opt_output_path)?.read_to_end(&mut wasm_opt_output)?;
-    wasm_opt_input_path.close()?;
-    wasm_opt_output_path.close()?;
-    let to_size = wasm_opt_output.len();
-    println!("===== Wasm (after optimization): {} bytes", to_size);
-    let wat_after_opt = wasmprinter::print_bytes(&wasm_opt_output).context("Failed to print Wasm")?;
-    println!("{}", wat_after_opt);
-    println!();
-
-    Ok(wasm_opt_output)
+    Ok(wasm)
 }
